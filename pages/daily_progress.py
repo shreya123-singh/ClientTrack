@@ -1,3 +1,4 @@
+
 import streamlit as st
 import pandas as pd
 from datetime import date
@@ -7,54 +8,40 @@ from database.db import fetch_data, execute_query
 
 def show_daily_progress():
 
-    st.title("📈 Daily Progress")
-    st.write("Track daily work updates and monitor project progress.")
+    st.title("📈 Daily Progress Tracking")
+    st.write("Record daily work and monitor project progress.")
     st.markdown("---")
 
-    projects = fetch_data(
-        "SELECT id, name FROM projects ORDER BY name"
-    )
+    projects = fetch_data("""
+        SELECT id, name, progress, status
+        FROM projects
+        ORDER BY name
+    """)
 
     if not projects:
-        st.warning(
-            "No projects found. Please add a project first in the Projects module."
-        )
+        st.warning("Please create a project first in the Projects module.")
         return
 
     project_options = {
-        f"{p['name']} (ID: {p['id']})": p['id']
+        f"{p['name']} (ID: {p['id']})": p["id"]
         for p in projects
     }
 
-    # ADD DAILY PROGRESS
+    # Add Daily Progress
     st.subheader("➕ Add Daily Progress")
-    st.caption("Record the work completed on a project each day.")
 
-    with st.form("daily_progress_form", clear_on_submit=True):
+    with st.form("add_daily_progress", clear_on_submit=True):
 
-        st.markdown("**Select Project**")
-        project_name = st.selectbox(
+        selected_project = st.selectbox(
             "Select Project",
             list(project_options.keys())
         )
 
-        st.markdown("**Progress Date**")
         progress_date = st.date_input(
             "Progress Date",
             value=date.today()
         )
 
-        st.markdown("**Today's Work Description**")
-        description = st.text_area(
-            "Today's Work Description",
-            placeholder=(
-                "e.g. Completed homepage design and started working "
-                "on the login page."
-            ),
-            label_visibility="collapsed"
-        )
-
-        st.markdown("**Current Project Progress (%)**")
         progress_percentage = st.slider(
             "Current Project Progress (%)",
             min_value=0,
@@ -62,179 +49,167 @@ def show_daily_progress():
             value=0
         )
 
-        st.caption(
-            "Enter the overall completion percentage of the project after today's work."
+        description = st.text_area(
+            "Work Completed Today *",
+            placeholder="Describe the work completed today..."
         )
 
-        submitted = st.form_submit_button(
-            "💾 Save Daily Progress",
-            use_container_width=True
-        )
+        submitted = st.form_submit_button("Save Daily Progress")
 
         if submitted:
 
             if not description.strip():
-                st.error("Please enter today's work description.")
+                st.error("Please enter today's work details.")
 
             else:
-                project_id = project_options[project_name]
+                project_id = project_options[selected_project]
 
-                execute_query("""
+                execute_query(
+                    """
                     INSERT INTO daily_progress
-                    (project_id, progress_date, description,
-                     progress_percentage)
+                    (project_id, progress_date, description, progress_percentage)
                     VALUES (?, ?, ?, ?)
-                """, (
-                    project_id,
-                    str(progress_date),
-                    description.strip(),
-                    progress_percentage
-                ))
+                    """,
+                    (
+                        project_id,
+                        str(progress_date),
+                        description.strip(),
+                        progress_percentage
+                    )
+                )
 
-                if progress_percentage == 100:
-                    status = "Completed"
-                elif progress_percentage == 0:
-                    status = "Not Started"
-                else:
-                    status = "In Progress"
-
-                execute_query("""
+                execute_query(
+                    """
                     UPDATE projects
-                    SET progress=?, status=?
-                    WHERE id=?
-                """, (
-                    progress_percentage,
-                    status,
-                    project_id
-                ))
+                    SET progress = ?,
+                        status = CASE
+                            WHEN ? = 100 THEN 'Completed'
+                            WHEN ? > 0 AND status IN ('Not Started', 'Completed')
+                                THEN 'In Progress'
+                            ELSE status
+                        END
+                    WHERE id = ?
+                    """,
+                    (
+                        progress_percentage,
+                        progress_percentage,
+                        progress_percentage,
+                        project_id
+                    )
+                )
 
                 st.success("Daily progress saved successfully!")
-                st.experimental_rerun()
+                st.rerun()
 
     st.markdown("---")
 
-    # DAILY PROGRESS HISTORY
+    # Progress Summary
+    st.subheader("📊 Project Progress Overview")
+
+    total_projects = len(projects)
+    completed_projects = sum(
+        1 for p in projects if p["status"] == "Completed"
+    )
+
+    average_progress = (
+        sum(int(p["progress"] or 0) for p in projects) / total_projects
+        if total_projects else 0
+    )
+
+    c1, c2, c3 = st.columns(3)
+
+    c1.metric("Total Projects", total_projects)
+    c2.metric("Completed Projects", completed_projects)
+    c3.metric("Average Progress", f"{average_progress:.1f}%")
+
+    st.markdown("---")
+
+    # Individual Project Progress
+    st.subheader("📌 Individual Project Progress")
+
+    for project in projects:
+
+        progress = int(project["progress"] or 0)
+
+        st.write(f"**{project['name']}** — {progress}%")
+        st.progress(progress / 100)
+
+    st.markdown("---")
+
+    # Progress History
     st.subheader("📋 Daily Progress History")
 
     records = fetch_data("""
-        SELECT daily_progress.id,
-               projects.name AS project_name,
-               daily_progress.progress_date,
-               daily_progress.description,
-               daily_progress.progress_percentage
+        SELECT daily_progress.*, projects.name AS project_name
         FROM daily_progress
-        LEFT JOIN projects
-        ON daily_progress.project_id = projects.id
+        LEFT JOIN projects ON daily_progress.project_id = projects.id
         ORDER BY daily_progress.progress_date DESC,
                  daily_progress.id DESC
     """)
 
     if records:
 
-        df = pd.DataFrame(
-            [dict(row) for row in records]
-        )
-
-        # PROGRESS SUMMARY
-        st.subheader("📊 Progress Overview")
-
-        total_updates = len(df)
-
-        average_progress = pd.to_numeric(
-            df["progress_percentage"], errors="coerce"
-        ).mean()
-
-        col1, col2 = st.columns(2)
-
-        col1.metric("Total Updates", total_updates)
-
-        col2.metric(
-            "Average Progress",
-            f"{average_progress:.1f}%"
-            if pd.notna(average_progress) else "0%"
-        )
-
-        st.markdown("---")
-
-        # SEARCH AND FILTER
-        st.subheader("🔍 Search & Filter Progress")
+        df = pd.DataFrame([dict(r) for r in records])
 
         col1, col2 = st.columns(2)
 
         with col1:
-            search = st.text_input(
-                "Search Project",
-                placeholder="Enter project name..."
-            )
+            search = st.text_input("🔍 Search Project")
 
         with col2:
-            selected_project = st.selectbox(
-                "Filter by Project",
-                ["All Projects"] + list(
-                    df["project_name"].dropna().unique()
-                )
+            project_filter = st.selectbox(
+                "Filter Project",
+                ["All"] + list(project_options.keys())
             )
 
-        filtered_df = df.copy()
+        filtered = df.copy()
 
         if search:
-            filtered_df = filtered_df[
-                filtered_df["project_name"].str.contains(
+            filtered = filtered[
+                filtered["project_name"].str.contains(
                     search, case=False, na=False
                 )
             ]
 
-        if selected_project != "All Projects":
-            filtered_df = filtered_df[
-                filtered_df["project_name"] == selected_project
+        if project_filter != "All":
+            filter_id = project_options[project_filter]
+            filtered = filtered[
+                filtered["project_id"] == filter_id
             ]
 
         st.dataframe(
-            filtered_df,
+            filtered,
             use_container_width=True,
             hide_index=True
         )
 
-        st.caption(f"Showing {len(filtered_df)} progress record(s)")
-
         st.markdown("---")
 
-        # DELETE PROGRESS RECORD
+        # Delete Progress Record
         st.subheader("🗑️ Delete Progress Record")
-        st.caption("Select a record that you want to permanently delete.")
 
         record_options = {
-            f"{row['project_name']} - {row['progress_date']} "
-            f"(Record ID: {row['id']})": row['id']
-            for row in records
+            f"{r['project_name']} - {r['progress_date']} (ID: {r['id']})":
+            r["id"]
+            for r in records
         }
 
         selected_record = st.selectbox(
-            "Choose Progress Record",
+            "Select Record to Delete",
             list(record_options.keys())
         )
 
-        if st.button(
-            "🗑️ Delete Selected Record",
-            type="secondary"
-        ):
+        if st.button("Delete Selected Record"):
 
             record_id = record_options[selected_record]
 
             execute_query(
-                "DELETE FROM daily_progress WHERE id=?",
+                "DELETE FROM daily_progress WHERE id = ?",
                 (record_id,)
             )
 
             st.success("Progress record deleted successfully!")
-            st.info(
-                "Note: Deleting a history record does not automatically "
-                "change the project's current progress."
-            )
-            st.experimental_rerun()
+            st.rerun()
 
     else:
-        st.info(
-            "No daily progress records available yet. "
-            "Add your first update above."
-        )
+        st.info("No daily progress records available yet.")

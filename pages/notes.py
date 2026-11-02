@@ -1,23 +1,29 @@
+
 import streamlit as st
 import pandas as pd
+
 from database.db import fetch_data, execute_query
 
 
 def show_notes():
 
-    st.title("📝 Notes")
-    st.write("Create and manage important client and project notes.")
+    st.title("📝 Notes Management")
+    st.write("Store and manage important business information.")
     st.markdown("---")
 
+    notes = fetch_data("""
+        SELECT * FROM notes
+        ORDER BY created_at DESC
+    """)
+
+    # Add Note
     st.subheader("➕ Create New Note")
 
-    with st.form("notes_form"):
+    with st.form("add_note_form", clear_on_submit=True):
 
-        title = st.text_input("Note Title")
-
+        title = st.text_input("Note Title *")
         content = st.text_area(
-            "Note Description",
-            height=150,
+            "Note Details *",
             placeholder="Write your important notes here..."
         )
 
@@ -25,104 +31,158 @@ def show_notes():
 
         if submitted:
 
-            if title.strip() and content.strip():
-
-                execute_query("""
-                    INSERT INTO notes (title, content)
-                    VALUES (?, ?)
-                """, (title, content))
-
-                st.success("Note saved successfully!")
-                st.experimental_rerun()
+            if not title.strip() or not content.strip():
+                st.error("Please enter both title and note details.")
 
             else:
-                st.error("Please enter both title and description.")
+                execute_query(
+                    """
+                    INSERT INTO notes (title, content)
+                    VALUES (?, ?)
+                    """,
+                    (title.strip(), content.strip())
+                )
+
+                st.success("Note saved successfully!")
+                st.rerun()
 
     st.markdown("---")
-    st.subheader("📋 Saved Notes")
 
-    records = fetch_data("""
-        SELECT id, title, content, created_at
-        FROM notes
-        ORDER BY id DESC
-    """)
+    # Notes Summary
+    st.subheader("📊 Notes Overview")
 
-    if records:
+    c1, c2 = st.columns(2)
 
-        df = pd.DataFrame(
-            [dict(row) for row in records]
-        )
+    c1.metric("Total Notes", len(notes))
 
-        st.dataframe(df, use_container_width=True)
+    if notes:
+        latest_note = notes[0]["created_at"]
+    else:
+        latest_note = "No notes yet"
+
+    c2.metric("Latest Note", latest_note)
+
+    st.markdown("---")
+
+    # Display Notes
+    st.subheader("📋 All Notes")
+
+    if notes:
+
+        search = st.text_input("🔍 Search Notes by Title or Content")
+
+        filtered_notes = [
+            n for n in notes
+            if search.lower() in (
+                (n["title"] or "") + " " + (n["content"] or "")
+            ).lower()
+        ]
+
+        if filtered_notes:
+
+            for note in filtered_notes:
+
+                with st.expander(
+                    f"📌 {note['title']} | {note['created_at']}"
+                ):
+
+                    st.write(note["content"])
+
+                    st.caption(f"Note ID: {note['id']}")
+
+        else:
+            st.info("No matching notes found.")
 
         st.markdown("---")
+
+        # Edit Note
         st.subheader("✏️ Edit Note")
 
-        note_ids = df["id"].tolist()
+        note_options = {
+            f"{n['title']} (ID: {n['id']})": n["id"]
+            for n in notes
+        }
 
-        selected_id = st.selectbox(
-            "Select Note ID",
-            note_ids,
+        selected_note = st.selectbox(
+            "Select Note to Edit",
+            list(note_options.keys()),
             key="edit_note"
         )
 
-        selected_note = df[
-            df["id"] == selected_id
-        ].iloc[0]
+        selected_id = note_options[selected_note]
+
+        current = fetch_data(
+            "SELECT * FROM notes WHERE id = ?",
+            (selected_id,)
+        )[0]
 
         with st.form("edit_note_form"):
 
-            new_title = st.text_input(
-                "Update Title",
-                value=selected_note["title"]
+            edit_title = st.text_input(
+                "Note Title",
+                value=current["title"]
             )
 
-            new_content = st.text_area(
-                "Update Description",
-                value=selected_note["content"],
-                height=150
+            edit_content = st.text_area(
+                "Note Details",
+                value=current["content"] or ""
             )
 
-            update_button = st.form_submit_button("Update Note")
+            update = st.form_submit_button("Update Note")
 
-            if update_button:
+            if update:
 
-                if new_title.strip() and new_content.strip():
-
-                    execute_query("""
-                        UPDATE notes
-                        SET title=?, content=?
-                        WHERE id=?
-                    """, (
-                        new_title,
-                        new_content,
-                        selected_id
-                    ))
-
-                    st.success("Note updated successfully!")
-                    st.experimental_rerun()
+                if not edit_title.strip() or not edit_content.strip():
+                    st.error("Title and content are required.")
 
                 else:
-                    st.error("Title and description cannot be empty.")
+                    execute_query(
+                        """
+                        UPDATE notes
+                        SET title = ?, content = ?
+                        WHERE id = ?
+                        """,
+                        (
+                            edit_title.strip(),
+                            edit_content.strip(),
+                            selected_id
+                        )
+                    )
+
+                    st.success("Note updated successfully!")
+                    st.rerun()
 
         st.markdown("---")
+
+        # Delete Note
         st.subheader("🗑️ Delete Note")
 
-        delete_id = st.selectbox(
-            "Select Note ID to Delete",
-            note_ids,
+        delete_note = st.selectbox(
+            "Select Note to Delete",
+            list(note_options.keys()),
             key="delete_note"
         )
 
-        if st.button("Delete Note"):
+        confirm_delete = st.checkbox(
+            "I confirm that I want to delete this note."
+        )
 
-            execute_query(
-                "DELETE FROM notes WHERE id=?",
-                (delete_id,)
-            )
+        if st.button("Delete Selected Note"):
 
-            st.success("Note deleted successfully!")
-            st.experimental_rerun()
+            if confirm_delete:
+
+                delete_id = note_options[delete_note]
+
+                execute_query(
+                    "DELETE FROM notes WHERE id = ?",
+                    (delete_id,)
+                )
+
+                st.success("Note deleted successfully!")
+                st.rerun()
+
+            else:
+                st.warning("Please confirm before deleting.")
 
     else:
-        st.info("No notes available. Create your first note above.")
+        st.info("No notes available. Create your first note.")

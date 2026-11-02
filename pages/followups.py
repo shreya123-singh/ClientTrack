@@ -1,85 +1,74 @@
 import streamlit as st
 import pandas as pd
-from datetime import date
+from datetime import date, datetime
 
 from database.db import fetch_data, execute_query
 
 
 def show_followups():
 
-    st.title("🔔 Follow-Ups")
-    st.write("Schedule and track client follow-ups.")
+    st.title("📌 Follow-Up Management")
+    st.write("Track client follow-ups and never miss an important task.")
     st.markdown("---")
 
+    # Fetch clients
     clients = fetch_data(
         "SELECT id, name FROM clients ORDER BY name"
     )
 
     if not clients:
-        st.warning(
-            "No clients found. Please add a client first in the Clients module."
-        )
+        st.warning("Please add a client first in the Clients module.")
         return
 
     client_options = {
-        f"{c['name']} (ID: {c['id']})": c['id']
+        f"{c['name']} (ID: {c['id']})": c["id"]
         for c in clients
     }
 
-    # SCHEDULE FOLLOW-UP
+    # Fetch follow-ups
+    followups = fetch_data("""
+        SELECT followups.*, clients.name AS client_name
+        FROM followups
+        LEFT JOIN clients ON followups.client_id = clients.id
+        ORDER BY followups.followup_date DESC, followups.followup_time DESC
+    """)
+
+    # Add Follow-Up
     st.subheader("➕ Schedule New Follow-Up")
-    st.caption("Create a reminder to contact a client again.")
 
-    with st.form("followup_form", clear_on_submit=True):
+    with st.form("add_followup_form", clear_on_submit=True):
 
-        st.markdown("**Select Client**")
-        client_name = st.selectbox(
+        subject = st.text_input("Follow-Up Subject *")
+
+        client = st.selectbox(
             "Select Client",
-            list(client_options.keys()),
-            label_visibility="collapsed"
-        )
-
-        st.markdown("**Follow-Up Subject**")
-        subject = st.text_input(
-            "Follow-Up Subject",
-            placeholder="e.g. Discuss project proposal",
-            label_visibility="collapsed"
-        )
-
-        st.markdown("**Communication Method**")
-        method = st.selectbox(
-            "Communication Method",
-            ["Call", "Email", "WhatsApp", "Meeting"]
+            list(client_options.keys())
         )
 
         col1, col2 = st.columns(2)
 
         with col1:
-            st.markdown("**Follow-Up Date**")
+            method = st.selectbox(
+                "Communication Method",
+                ["Phone", "WhatsApp", "Email", "In-Person", "Other"]
+            )
+
             followup_date = st.date_input(
                 "Follow-Up Date",
                 value=date.today()
             )
 
         with col2:
-            st.markdown("**Follow-Up Time**")
             followup_time = st.time_input("Follow-Up Time")
 
-        st.markdown("**Follow-Up Notes**")
-        notes = st.text_area(
-            "Follow-Up Notes",
-            placeholder="Write what you need to discuss or remember...",
-            label_visibility="collapsed"
-        )
+            status = st.selectbox(
+                "Status",
+                ["Pending", "Done", "Cancelled"]
+            )
 
-        st.caption(
-            "New follow-ups are automatically saved with Pending status."
-        )
+        notes = st.text_area("Follow-Up Notes")
 
-        submitted = st.form_submit_button(
-            "📌 Save Follow-Up",
-            use_container_width=True
-        )
+        submitted = st.form_submit_button("Save Follow-Up")
 
         if submitted:
 
@@ -87,191 +76,255 @@ def show_followups():
                 st.error("Please enter a follow-up subject.")
 
             else:
-                client_id = client_options[client_name]
-
-                execute_query("""
+                execute_query(
+                    """
                     INSERT INTO followups
                     (client_id, subject, method, followup_date,
                      followup_time, status, notes)
                     VALUES (?, ?, ?, ?, ?, ?, ?)
-                """, (
-                    client_id,
-                    subject.strip(),
-                    method,
-                    str(followup_date),
-                    str(followup_time),
-                    "Pending",
-                    notes.strip()
-                ))
+                    """,
+                    (
+                        client_options[client],
+                        subject.strip(),
+                        method,
+                        str(followup_date),
+                        str(followup_time),
+                        status,
+                        notes
+                    )
+                )
 
-                st.success("Follow-Up scheduled successfully!")
-                st.experimental_rerun()
+                st.success("Follow-up scheduled successfully!")
+                st.rerun()
 
     st.markdown("---")
 
-    # ALL FOLLOW-UPS
-    st.subheader("📋 All Follow-Ups")
+    # Follow-Up Summary
+    st.subheader("📊 Follow-Up Overview")
 
-    records = fetch_data("""
-        SELECT followups.id,
-               clients.name AS client_name,
-               followups.subject,
-               followups.method,
-               followups.followup_date,
-               followups.followup_time,
-               followups.status,
-               followups.notes
-        FROM followups
-        LEFT JOIN clients
-        ON followups.client_id = clients.id
-        ORDER BY followups.followup_date DESC
-    """)
+    pending = sum(1 for f in followups if f["status"] == "Pending")
+    done = sum(1 for f in followups if f["status"] == "Done")
+    cancelled = sum(1 for f in followups if f["status"] == "Cancelled")
 
-    if records:
+    today = date.today()
 
-        df = pd.DataFrame([dict(row) for row in records])
+    overdue = sum(
+        1 for f in followups
+        if f["status"] == "Pending"
+        and (
+            f["followup_date"] < str(today)
+            or (
+                f["followup_date"] == str(today)
+                and f["followup_time"] < datetime.now().strftime("%H:%M:%S")
+            )
+        )
+    )
 
-        # FOLLOW-UP SUMMARY
-        st.subheader("📊 Follow-Up Summary")
+    c1, c2, c3, c4 = st.columns(4)
 
-        pending = len(df[df["status"] == "Pending"])
-        completed = len(df[df["status"] == "Completed"])
-        cancelled = len(df[df["status"] == "Cancelled"])
+    c1.metric("Total Follow-Ups", len(followups))
+    c2.metric("Pending", pending)
+    c3.metric("Completed", done)
+    c4.metric("Overdue", overdue)
 
-        overdue = len(df[
-            (df["status"] == "Pending") &
-            (df["followup_date"] < str(date.today()))
-        ])
+    st.markdown("---")
 
-        col1, col2, col3, col4 = st.columns(4)
+    # Display Follow-Ups
+    st.subheader("📋 Follow-Up Records")
 
-        col1.metric("📌 Pending", pending)
-        col2.metric("✅ Completed", completed)
-        col3.metric("⏰ Overdue", overdue)
-        col4.metric("❌ Cancelled", cancelled)
+    if followups:
 
-        st.markdown("---")
+        df = pd.DataFrame([dict(f) for f in followups])
 
-        # SEARCH AND FILTER
-        st.subheader("🔍 Search & Filter Follow-Ups")
+        # Add overdue information
+        df["Reminder"] = df.apply(
+            lambda row:
+            "Overdue"
+            if row["status"] == "Pending"
+            and (
+                row["followup_date"] < str(today)
+                or (
+                    row["followup_date"] == str(today)
+                    and row["followup_time"] < datetime.now().strftime("%H:%M:%S")
+                )
+            )
+            else "Upcoming"
+            if row["status"] == "Pending"
+            else row["status"],
+            axis=1
+        )
 
+        # Search and filters
         col1, col2 = st.columns(2)
 
         with col1:
-            search = st.text_input(
-                "Search Follow-Up",
-                placeholder="Search by client or subject..."
-            )
+            search = st.text_input("🔍 Search by subject or client")
 
         with col2:
-            selected_status = st.selectbox(
+            filter_status = st.selectbox(
                 "Filter by Status",
-                ["All", "Pending", "Completed", "Cancelled"]
+                ["All", "Pending", "Done", "Cancelled"]
             )
 
-        filtered_df = df.copy()
+        filtered = df.copy()
 
         if search:
-            filtered_df = filtered_df[
-                filtered_df["client_name"].str.contains(
+            filtered = filtered[
+                filtered["subject"].str.contains(
                     search, case=False, na=False
                 )
                 |
-                filtered_df["subject"].str.contains(
+                filtered["client_name"].str.contains(
                     search, case=False, na=False
                 )
             ]
 
-        if selected_status != "All":
-            filtered_df = filtered_df[
-                filtered_df["status"] == selected_status
+        if filter_status != "All":
+            filtered = filtered[
+                filtered["status"] == filter_status
             ]
 
         st.dataframe(
-            filtered_df,
+            filtered,
             use_container_width=True,
             hide_index=True
         )
 
-        st.caption(f"Showing {len(filtered_df)} follow-up(s)")
-
         st.markdown("---")
 
-        # UPDATE STATUS
-        st.subheader("✏️ Update Follow-Up Status")
-        st.caption("Choose a follow-up and update its current status.")
+        # Edit Follow-Up
+        st.subheader("✏️ Edit Follow-Up")
 
         followup_options = {
-            f"{record['subject']} - {record['client_name']} (ID: {record['id']})":
-            record['id']
-            for record in records
+            f"{f['subject']} - {f['client_name']} (ID: {f['id']})": f["id"]
+            for f in followups
         }
 
-        selected_followup = st.selectbox(
-            "Choose Follow-Up",
+        selected = st.selectbox(
+            "Select Follow-Up to Edit",
             list(followup_options.keys()),
-            key="update_followup"
+            key="edit_followup"
         )
 
-        selected_id = followup_options[selected_followup]
+        selected_id = followup_options[selected]
 
-        current_status = fetch_data(
-            "SELECT status FROM followups WHERE id = ?",
+        current = fetch_data(
+            "SELECT * FROM followups WHERE id = ?",
             (selected_id,)
-        )[0]["status"]
+        )[0]
 
-        statuses = ["Pending", "Completed", "Cancelled"]
+        methods = ["Phone", "WhatsApp", "Email", "In-Person", "Other"]
+        statuses = ["Pending", "Done", "Cancelled"]
 
-        with st.form("update_followup_form"):
+        with st.form("edit_followup_form"):
 
-            new_status = st.selectbox(
-                "Select New Status",
-                statuses,
-                index=(
-                    statuses.index(current_status)
-                    if current_status in statuses else 0
-                )
+            edit_subject = st.text_input(
+                "Subject",
+                value=current["subject"]
             )
 
-            if st.form_submit_button(
-                "💾 Update Follow-Up",
-                use_container_width=True
-            ):
+            current_client = next(
+                (
+                    key for key, value in client_options.items()
+                    if value == current["client_id"]
+                ),
+                list(client_options.keys())[0]
+            )
 
-                execute_query(
-                    "UPDATE followups SET status=? WHERE id=?",
-                    (new_status, selected_id)
-                )
+            edit_client = st.selectbox(
+                "Client",
+                list(client_options.keys()),
+                index=list(client_options.keys()).index(current_client)
+            )
 
-                st.success("Follow-Up updated successfully!")
-                st.experimental_rerun()
+            edit_method = st.selectbox(
+                "Communication Method",
+                methods,
+                index=methods.index(current["method"])
+                if current["method"] in methods else 0
+            )
+
+            edit_date = st.date_input(
+                "Follow-Up Date",
+                value=date.fromisoformat(current["followup_date"])
+            )
+
+            edit_time = st.time_input(
+                "Follow-Up Time",
+                value=datetime.strptime(
+                    current["followup_time"], "%H:%M:%S"
+                ).time()
+                if len(current["followup_time"]) == 8
+                else datetime.strptime(
+                    current["followup_time"], "%H:%M"
+                ).time()
+            )
+
+            edit_status = st.selectbox(
+                "Status",
+                statuses,
+                index=statuses.index(current["status"])
+                if current["status"] in statuses else 0
+            )
+
+            edit_notes = st.text_area(
+                "Notes",
+                value=current["notes"] or ""
+            )
+
+            update = st.form_submit_button("Update Follow-Up")
+
+            if update:
+
+                if not edit_subject.strip():
+                    st.error("Subject is required.")
+
+                else:
+                    execute_query(
+                        """
+                        UPDATE followups
+                        SET client_id = ?, subject = ?, method = ?,
+                            followup_date = ?, followup_time = ?,
+                            status = ?, notes = ?
+                        WHERE id = ?
+                        """,
+                        (
+                            client_options[edit_client],
+                            edit_subject.strip(),
+                            edit_method,
+                            str(edit_date),
+                            str(edit_time),
+                            edit_status,
+                            edit_notes,
+                            selected_id
+                        )
+                    )
+
+                    st.success("Follow-up updated successfully!")
+                    st.rerun()
 
         st.markdown("---")
 
-        # DELETE FOLLOW-UP
+        # Delete Follow-Up
         st.subheader("🗑️ Delete Follow-Up")
-        st.caption("Select a follow-up you want to permanently delete.")
 
-        delete_followup = st.selectbox(
-            "Choose Follow-Up to Delete",
+        delete_option = st.selectbox(
+            "Select Follow-Up to Delete",
             list(followup_options.keys()),
             key="delete_followup"
         )
 
-        if st.button(
-            "🗑️ Delete Selected Follow-Up",
-            type="secondary"
-        ):
+        if st.button("Delete Selected Follow-Up"):
 
-            delete_id = followup_options[delete_followup]
+            delete_id = followup_options[delete_option]
 
             execute_query(
-                "DELETE FROM followups WHERE id=?",
+                "DELETE FROM followups WHERE id = ?",
                 (delete_id,)
             )
 
-            st.success("Follow-Up deleted successfully!")
-            st.experimental_rerun()
+            st.success("Follow-up deleted successfully!")
+            st.rerun()
 
     else:
-        st.info("No follow-ups scheduled yet. Add your first follow-up above.")
+        st.info("No follow-ups available. Schedule your first follow-up.")

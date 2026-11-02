@@ -1,72 +1,225 @@
 
-/* Main application */
+/* =========================================
+   CLIENTTRACK - PROFESSIONAL DARK THEME
+   ========================================= */
+
+/* Main Application */
 .stApp {
-    background-color: #f4f7f5;
-    color: #263b33;
+    background: #101916;
+    color: #E5EEE9;
+    font-family: "Segoe UI", sans-serif;
 }
 
-/* Hide automatic Streamlit page navigation */
-[data-testid="stSidebarNav"] {
-    display: none;
+/* Main Content Area */
+.main .block-container {
+    background-color: #101916;
+    padding-top: 2rem;
+    padding-bottom: 3rem;
+    max-width: 1500px;
+}
+
+/* Headings */
+h1 {
+    color: #E5EEE9 !important;
+    font-weight: 750 !important;
+    letter-spacing: -0.5px;
+}
+
+h2, h3, h4 {
+    color: #DCEBE3 !important;
+    font-weight: 650 !important;
+}
+
+/* Normal Text */
+p, label {
+    color: #C5D5CD;
 }
 
 /* Sidebar */
 section[data-testid="stSidebar"] {
-    background-color: #123c32;
+    background-color: #0B2922;
+    border-right: 1px solid #24483C;
 }
 
 section[data-testid="stSidebar"] * {
-    color: #ffffff;
+    color: #E5EEE9;
 }
 
-/* Main headings */
-h1, h2, h3 {
-    color: #173d32;
-    font-weight: 700;
+section[data-testid="stSidebar"] h1 {
+    color: #68D6A0 !important;
 }
 
-/* Metric cards */
+/* Sidebar Radio Buttons */
+section[data-testid="stSidebar"] div[role="radiogroup"] {
+    gap: 5px;
+}
+
+section[data-testid="stSidebar"] div[role="radiogroup"] label {
+    background-color: transparent;
+    border-radius: 8px;
+    padding: 7px 9px;
+    transition: background-color 0.2s ease;
+}
+
+section[data-testid="stSidebar"] div[role="radiogroup"] label:hover {
+    background-color: #194638;
+}
+
+/* Metric Cards */
 div[data-testid="stMetric"] {
-    background-color: #ffffff;
+    background: linear-gradient(145deg, #1B3027, #172720);
     padding: 20px;
     border-radius: 14px;
-    border: 1px solid #e0eae4;
-    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.04);
+    border: 1px solid #345344;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    transition: transform 0.2s ease, border-color 0.2s ease;
 }
 
-/* Metric labels */
+div[data-testid="stMetric"]:hover {
+    transform: translateY(-3px);
+    border-color: #68D6A0;
+}
+
 div[data-testid="stMetricLabel"] {
-    color: #52675d;
+    color: #A9C2B3 !important;
+    font-size: 14px;
 }
 
-/* Metric values */
 div[data-testid="stMetricValue"] {
-    color: #176b50;
+    color: #68D6A0 !important;
+    font-size: 30px;
     font-weight: 700;
 }
 
 /* Buttons */
 .stButton > button {
-    background-color: #176b50;
-    color: #ffffff;
-    border: none;
+    background: linear-gradient(135deg, #176B50, #21845F);
+    color: #FFFFFF !important;
+    border: 1px solid #278B68;
     border-radius: 9px;
-    padding: 10px 16px;
+    padding: 9px 16px;
     font-weight: 600;
+    transition: all 0.2s ease;
 }
 
 .stButton > button:hover {
-    background-color: #0f503b;
-    color: #ffffff;
+    background: #26966B;
+    border-color: #68D6A0;
+    color: #FFFFFF !important;
+    transform: translateY(-2px);
 }
 
-/* Data tables */
+.stButton > button:focus {
+    box-shadow: 0 0 0 2px #68D6A0;
+}
+
+/* Download Buttons */
+.stDownloadButton > button {
+    background-color: #176B50;
+    color: white !important;
+    border: 1px solid #278B68;
+    border-radius: 9px;
+}
+
+/* Text Inputs */
+.stTextInput input,
+.stTextArea textarea,
+.stNumberInput input,
+.stDateInput input,
+.stTimeInput input {
+    background-color: #1B2923 !important;
+    color: #FFFFFF !important;
+    border: 1px solid #345344 !important;
+    border-radius: 8px !important;
+}
+
+/* Input Focus */
+.stTextInput input:focus,
+.stTextArea textarea:focus,
+.stNumberInput input:focus {
+    border-color: #68D6A0 !important;
+    box-shadow: 0 0 0 1px #68D6A0 !important;
+}
+
+/* Select Boxes */
+.stSelectbox div[data-baseweb="select"],
+.stMultiSelect div[data-baseweb="select"] {
+    background-color: #1B2923;
+    border-color: #345344;
+    border-radius: 8px;
+}
+
+/* Forms */
+div[data-testid="stForm"] {
+    background-color: #172720;
+    border: 1px solid #345344;
+    padding: 22px;
+    border-radius: 14px;
+}
+
+/* Expanders */
+div[data-testid="stExpander"] {
+    background-color: #172720;
+    border: 1px solid #345344;
+    border-radius: 10px;
+}
+
+/* Data Tables */
 div[data-testid="stDataFrame"] {
-    background-color: #ffffff;
-    border-radius: 12px;
+    background-color: #1B2923;
+    border: 1px solid #345344;
+    border-radius: 10px;
+    overflow: hidden;
 }
 
-/* Dividers */
+/* Alerts and Messages */
+div[data-testid="stAlert"] {
+    border-radius: 10px;
+    border: 1px solid #345344;
+}
+
+/* Tabs */
+button[data-baseweb="tab"] {
+    color: #C5D5CD !important;
+}
+
+button[data-baseweb="tab"][aria-selected="true"] {
+    color: #68D6A0 !important;
+    border-bottom-color: #68D6A0 !important;
+}
+
+/* Progress Bars */
+div[data-testid="stProgressBar"] > div > div {
+    background-color: #68D6A0;
+}
+
+/* Horizontal Divider */
 hr {
-    border-color: #dce7e1;
+    border-color: #345344;
+    margin-top: 25px;
+    margin-bottom: 25px;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: #101916;
+}
+
+::-webkit-scrollbar-thumb {
+    background: #345344;
+    border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #68D6A0;
+}
+
+/* Footer spacing */
+footer {
+    visibility: hidden;
 }

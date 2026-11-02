@@ -1,3 +1,4 @@
+
 import streamlit as st
 import pandas as pd
 from datetime import date
@@ -7,8 +8,8 @@ from database.db import fetch_data, execute_query
 
 def show_projects():
 
-    st.title("📁 Projects")
-    st.write("Manage client projects, budgets, progress and deadlines.")
+    st.title("📁 Project Management")
+    st.write("Create, manage and track all your client projects.")
     st.markdown("---")
 
     clients = fetch_data(
@@ -16,309 +17,287 @@ def show_projects():
     )
 
     if not clients:
-        st.warning(
-            "No clients found. Please add a client first in the Clients module."
-        )
+        st.warning("Please add a client first in the Clients module.")
         return
 
     client_options = {
-        f"{c['name']} (ID: {c['id']})": c['id']
+        f"{c['name']} (ID: {c['id']})": c["id"]
         for c in clients
     }
 
-    # ADD NEW PROJECT
-    st.subheader("➕ Add New Project")
-    st.caption("Create a project and assign it to an existing client.")
+    statuses = ["Not Started", "In Progress", "On Hold", "Completed"]
 
-    with st.form("project_form", clear_on_submit=True):
-
-        st.markdown("**Project Name**")
-        project_name = st.text_input(
-            "Project Name",
-            placeholder="e.g. Website Development",
-            label_visibility="collapsed"
-        )
-
-        st.markdown("**Select Client**")
-        client_name = st.selectbox(
-            "Select Client",
-            list(client_options.keys())
-        )
-
-        st.markdown("**Project Description**")
-        description = st.text_area(
-            "Project Description",
-            placeholder="Describe the project, its objectives and requirements...",
-            label_visibility="collapsed"
-        )
-
-        col1, col2 = st.columns(2)
-
-        with col1:
-            st.markdown("**Project Start Date**")
-            start_date = st.date_input(
-                "Start Date",
-                value=date.today()
-            )
-
-        with col2:
-            st.markdown("**Project Deadline**")
-            deadline = st.date_input(
-                "Project Deadline",
-                value=date.today()
-            )
-
-        col3, col4 = st.columns(2)
-
-        with col3:
-            st.markdown("**Project Budget (₹)**")
-            budget = st.number_input(
-                "Project Budget",
-                min_value=0.0,
-                value=0.0,
-                step=1000.0,
-                help="Enter the estimated project budget in rupees."
-            )
-
-        with col4:
-            st.markdown("**Initial Progress**")
-            progress = st.slider(
-                "Initial Progress (%)",
-                min_value=0,
-                max_value=100,
-                value=0
-            )
-
-        st.markdown("**Project Status**")
-        status = st.selectbox(
-            "Project Status",
-            ["Not Started", "In Progress", "On Hold", "Completed"]
-        )
-
-        st.caption(
-            "Example: A new project can start with 0% progress and Not Started status."
-        )
-
-        submitted = st.form_submit_button(
-            "➕ Add Project",
-            use_container_width=True
-        )
-
-        if submitted:
-
-            if not project_name.strip():
-                st.error("Please enter a project name.")
-
-            elif deadline < start_date:
-                st.error(
-                    "Project deadline cannot be earlier than the start date."
-                )
-
-            else:
-                client_id = client_options[client_name]
-
-                execute_query("""
-                    INSERT INTO projects
-                    (name, client_id, description, status,
-                     progress, start_date, deadline, budget)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """, (
-                    project_name.strip(),
-                    client_id,
-                    description.strip(),
-                    status,
-                    progress,
-                    str(start_date),
-                    str(deadline),
-                    budget
-                ))
-
-                st.success("Project added successfully!")
-                st.experimental_rerun()
-
-    st.markdown("---")
-
-    # FETCH PROJECTS
-    st.subheader("📋 All Projects")
-
-    records = fetch_data("""
-        SELECT projects.id,
-               projects.name,
-               clients.name AS client_name,
-               projects.description,
-               projects.status,
-               projects.progress,
-               projects.start_date,
-               projects.deadline,
-               projects.budget
+    projects = fetch_data("""
+        SELECT projects.*, clients.name AS client_name
         FROM projects
-        LEFT JOIN clients
-        ON projects.client_id = clients.id
+        LEFT JOIN clients ON projects.client_id = clients.id
         ORDER BY projects.id DESC
     """)
 
-    if records:
+    # Add Project
+    st.subheader("➕ Create New Project")
 
-        df = pd.DataFrame([dict(row) for row in records])
+    with st.form("add_project_form", clear_on_submit=True):
 
-        # PROJECT SUMMARY
-        st.subheader("📊 Project Summary")
+        name = st.text_input("Project Name *")
 
-        total_projects = len(df)
-        ongoing = len(df[df["status"] == "In Progress"])
-        completed = len(df[df["status"] == "Completed"])
-        total_budget = pd.to_numeric(
-            df["budget"], errors="coerce"
-        ).fillna(0).sum()
+        client = st.selectbox(
+            "Assign Client",
+            list(client_options.keys())
+        )
 
-        col1, col2, col3, col4 = st.columns(4)
-
-        col1.metric("Total Projects", total_projects)
-        col2.metric("Ongoing Projects", ongoing)
-        col3.metric("Completed Projects", completed)
-        col4.metric("Total Budget", f"₹{total_budget:,.0f}")
-
-        st.markdown("---")
-
-        # SEARCH AND FILTER
-        st.subheader("🔍 Search & Filter Projects")
+        description = st.text_area("Project Description")
 
         col1, col2 = st.columns(2)
 
         with col1:
-            search = st.text_input(
-                "Search Project",
-                placeholder="Enter project or client name..."
-            )
+            status = st.selectbox("Project Status", statuses)
+            start_date = st.date_input("Start Date", value=date.today())
 
         with col2:
-            selected_status = st.selectbox(
+            progress = st.slider("Progress (%)", 0, 100, 0)
+            deadline = st.date_input("Project Deadline", value=date.today())
+
+        budget = st.number_input(
+            "Project Budget",
+            min_value=0.0,
+            step=1000.0
+        )
+
+        submitted = st.form_submit_button("Create Project")
+
+        if submitted:
+
+            if not name.strip():
+                st.error("Please enter a project name.")
+
+            elif deadline < start_date:
+                st.error("Deadline cannot be before the start date.")
+
+            else:
+                execute_query(
+                    """
+                    INSERT INTO projects
+                    (name, client_id, description, status, progress,
+                     start_date, deadline, budget)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        name.strip(),
+                        client_options[client],
+                        description,
+                        status,
+                        progress,
+                        str(start_date),
+                        str(deadline),
+                        budget
+                    )
+                )
+
+                st.success("Project created successfully!")
+                st.rerun()
+
+    st.markdown("---")
+
+    # Project Summary
+    st.subheader("📊 Project Overview")
+
+    total = len(projects)
+    ongoing = sum(1 for p in projects if p["status"] == "In Progress")
+    completed = sum(1 for p in projects if p["status"] == "Completed")
+    not_started = sum(1 for p in projects if p["status"] == "Not Started")
+
+    c1, c2, c3, c4 = st.columns(4)
+
+    c1.metric("Total Projects", total)
+    c2.metric("Ongoing", ongoing)
+    c3.metric("Completed", completed)
+    c4.metric("Not Started", not_started)
+
+    st.markdown("---")
+
+    # Project Records
+    st.subheader("📋 All Projects")
+
+    if projects:
+
+        df = pd.DataFrame([dict(p) for p in projects])
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+            search = st.text_input("🔍 Search Project or Client")
+
+        with col2:
+            filter_status = st.selectbox(
                 "Filter by Status",
-                ["All", "Not Started", "In Progress", "On Hold", "Completed"]
+                ["All"] + statuses
             )
 
-        filtered_df = df.copy()
+        filtered = df.copy()
 
         if search:
-            filtered_df = filtered_df[
-                filtered_df["name"].str.contains(
+            filtered = filtered[
+                filtered["name"].str.contains(
                     search, case=False, na=False
                 )
                 |
-                filtered_df["client_name"].str.contains(
+                filtered["client_name"].str.contains(
                     search, case=False, na=False
                 )
             ]
 
-        if selected_status != "All":
-            filtered_df = filtered_df[
-                filtered_df["status"] == selected_status
+        if filter_status != "All":
+            filtered = filtered[
+                filtered["status"] == filter_status
             ]
 
         st.dataframe(
-            filtered_df,
+            filtered,
             use_container_width=True,
             hide_index=True
         )
 
-        st.caption(f"Showing {len(filtered_df)} project(s)")
-
         st.markdown("---")
 
-        # UPDATE PROJECT
-        st.subheader("✏️ Update Project")
-        st.caption("Select a project to update its status and completion progress.")
+        # Edit Project
+        st.subheader("✏️ Edit Project")
 
         project_options = {
-            f"{row['name']} - {row['client_name']} (ID: {row['id']})":
-            row['id']
-            for row in records
+            f"{p['name']} - {p['client_name']} (ID: {p['id']})": p["id"]
+            for p in projects
         }
 
-        selected_project_name = st.selectbox(
-            "Choose Project",
+        selected = st.selectbox(
+            "Select Project",
             list(project_options.keys()),
-            key="update_project"
+            key="edit_project"
         )
 
-        selected_id = project_options[selected_project_name]
+        selected_id = project_options[selected]
 
-        selected_project = df[
-            df["id"] == selected_id
-        ].iloc[0]
+        current = fetch_data(
+            "SELECT * FROM projects WHERE id = ?",
+            (selected_id,)
+        )[0]
 
-        project_statuses = [
-            "Not Started",
-            "In Progress",
-            "On Hold",
-            "Completed"
-        ]
+        current_client = next(
+            (
+                key for key, value in client_options.items()
+                if value == current["client_id"]
+            ),
+            list(client_options.keys())[0]
+        )
 
-        with st.form("update_project_form"):
+        with st.form("edit_project_form"):
 
-            new_status = st.selectbox(
-                "Update Project Status",
-                project_statuses,
-                index=(
-                    project_statuses.index(selected_project["status"])
-                    if selected_project["status"] in project_statuses
-                    else 0
+            edit_name = st.text_input(
+                "Project Name",
+                value=current["name"]
+            )
+
+            edit_client = st.selectbox(
+                "Client",
+                list(client_options.keys()),
+                index=list(client_options.keys()).index(current_client)
+            )
+
+            edit_description = st.text_area(
+                "Description",
+                value=current["description"] or ""
+            )
+
+            edit_status = st.selectbox(
+                "Status",
+                statuses,
+                index=statuses.index(current["status"])
+                if current["status"] in statuses else 0
+            )
+
+            col1, col2 = st.columns(2)
+
+            with col1:
+                edit_progress = st.slider(
+                    "Progress (%)",
+                    0, 100,
+                    int(current["progress"] or 0)
                 )
-            )
 
-            new_progress = st.slider(
-                "Update Progress (%)",
-                min_value=0,
-                max_value=100,
-                value=int(selected_project["progress"] or 0)
-            )
+                edit_start = st.date_input(
+                    "Start Date",
+                    value=date.fromisoformat(current["start_date"])
+                )
 
-            update_submitted = st.form_submit_button(
-                "💾 Update Project",
-                use_container_width=True
-            )
+            with col2:
+                edit_deadline = st.date_input(
+                    "Deadline",
+                    value=date.fromisoformat(current["deadline"])
+                )
 
-            if update_submitted:
+                edit_budget = st.number_input(
+                    "Budget",
+                    min_value=0.0,
+                    value=float(current["budget"] or 0),
+                    step=1000.0
+                )
 
-                execute_query("""
-                    UPDATE projects
-                    SET status=?, progress=?
-                    WHERE id=?
-                """, (
-                    new_status,
-                    new_progress,
-                    selected_id
-                ))
+            update = st.form_submit_button("Update Project")
 
-                st.success("Project updated successfully!")
-                st.experimental_rerun()
+            if update:
+
+                if not edit_name.strip():
+                    st.error("Project name is required.")
+
+                elif edit_deadline < edit_start:
+                    st.error("Deadline cannot be before start date.")
+
+                else:
+                    execute_query(
+                        """
+                        UPDATE projects
+                        SET name = ?, client_id = ?, description = ?,
+                            status = ?, progress = ?, start_date = ?,
+                            deadline = ?, budget = ?
+                        WHERE id = ?
+                        """,
+                        (
+                            edit_name.strip(),
+                            client_options[edit_client],
+                            edit_description,
+                            edit_status,
+                            edit_progress,
+                            str(edit_start),
+                            str(edit_deadline),
+                            edit_budget,
+                            selected_id
+                        )
+                    )
+
+                    st.success("Project updated successfully!")
+                    st.rerun()
 
         st.markdown("---")
 
-        # DELETE PROJECT
+        # Delete Project
         st.subheader("🗑️ Delete Project")
-        st.caption("Select a project that you want to permanently delete.")
 
-        delete_project_name = st.selectbox(
-            "Choose Project to Delete",
+        delete_option = st.selectbox(
+            "Select Project to Delete",
             list(project_options.keys()),
             key="delete_project"
         )
 
-        if st.button(
-            "🗑️ Delete Selected Project",
-            type="secondary"
-        ):
+        if st.button("Delete Selected Project"):
 
-            delete_id = project_options[delete_project_name]
+            delete_id = project_options[delete_option]
 
             execute_query(
-                "DELETE FROM projects WHERE id=?",
+                "DELETE FROM projects WHERE id = ?",
                 (delete_id,)
             )
 
             st.success("Project deleted successfully!")
-            st.experimental_rerun()
+            st.rerun()
 
     else:
-        st.info("No projects added yet. Create your first project above.")
+        st.info("No projects available. Create your first project.")
